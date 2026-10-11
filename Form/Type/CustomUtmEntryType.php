@@ -8,11 +8,13 @@ use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\Extension\Core\Type\TextType;
 use Symfony\Component\Form\FormBuilderInterface;
 use Symfony\Component\OptionsResolver\OptionsResolver;
-use Symfony\Component\Validator\Constraints\NotBlank;
-use Symfony\Component\Validator\Constraints\Regex;
 
 /**
  * Single row of a custom UTM key/value pair.
+ *
+ * Empty keys/values are filtered out by CustomUtmHelper on submit;
+ * no Symfony Validator constraints are declared so the type works in
+ * minimal unit-test form factories without ValidatorExtension.
  *
  * @extends AbstractType<array{key: string, value: string}>
  */
@@ -27,14 +29,7 @@ class CustomUtmEntryType extends AbstractType
                 'class'       => 'form-control',
                 'placeholder' => 'mautic.customutm.form.key.placeholder',
             ],
-            'required'    => true,
-            'constraints' => [
-                new NotBlank(['message' => 'mautic.customutm.form.key.required']),
-                new Regex([
-                    'pattern' => '/^[a-zA-Z0-9_\-\.]+$/',
-                    'message' => 'mautic.customutm.form.key.invalid',
-                ]),
-            ],
+            'required' => false,
         ]);
 
         $builder->add('value', TextType::class, [
@@ -44,10 +39,7 @@ class CustomUtmEntryType extends AbstractType
                 'class'       => 'form-control',
                 'placeholder' => 'mautic.customutm.form.value.placeholder',
             ],
-            'required'    => true,
-            'constraints' => [
-                new NotBlank(['message' => 'mautic.customutm.form.value.required']),
-            ],
+            'required' => false,
         ]);
     }
 
