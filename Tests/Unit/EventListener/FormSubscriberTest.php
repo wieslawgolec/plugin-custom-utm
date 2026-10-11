@@ -10,12 +10,17 @@ use MauticPlugin\MauticCustomUtmBundle\Form\Type\CustomUtmEntryType;
 use MauticPlugin\MauticCustomUtmBundle\Helper\CustomUtmHelper;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Form\Extension\Core\Type\FormType;
+use Symfony\Component\Form\Extension\Validator\ValidatorExtension;
 use Symfony\Component\Form\FormFactoryInterface;
 use Symfony\Component\Form\Forms;
+use Symfony\Component\Validator\Validation;
 
 /**
  * Builds a real Symfony form with the subscriber's listeners and verifies
  * the round-trip of custom UTM data.
+ *
+ * ValidatorExtension is required because CustomUtmEntryType uses the
+ * "constraints" option on TextType fields.
  */
 final class FormSubscriberTest extends TestCase
 {
@@ -24,7 +29,10 @@ final class FormSubscriberTest extends TestCase
 
     protected function setUp(): void
     {
+        $validator = Validation::createValidator();
+
         $this->factory = Forms::createFormFactoryBuilder()
+            ->addExtensions([new ValidatorExtension($validator)])
             ->addTypes([
                 new CustomUtmEntryType(),
                 new CustomUtmCollectionType(),
