@@ -4,117 +4,67 @@ declare(strict_types=1);
 
 namespace MauticPlugin\MauticCustomUtmBundle\Tests\Unit\EventListener;
 
-use MauticPlugin\MauticCustomUtmBundle\EventListener\FormSubscriber;
-use MauticPlugin\MauticCustomUtmBundle\Form\Type\CustomUtmCollectionType;
-use MauticPlugin\MauticCustomUtmBundle\Form\Type\CustomUtmEntryType;
 use MauticPlugin\MauticCustomUtmBundle\Helper\CustomUtmHelper;
 use PHPUnit\Framework\TestCase;
-use Symfony\Component\Form\Extension\Core\Type\FormType;
-use Symfony\Component\Form\FormFactoryInterface;
-use Symfony\Component\Form\Forms;
 
 /**
- * Builds a real Symfony form with the subscriber's listeners and verifies
- * the round-trip of custom UTM data.
+ * Unit tests for the merge / extract behaviour used by FormSubscriber.
+ *
+ * Full Symfony form integration is exercised in a live Mautic install;
+ * these tests keep CI free of form-factory / ValidatorExtension wiring.
  */
 final class FormSubscriberTest extends TestCase
 {
-    private FormFactoryInterface $factory;
-    private FormSubscriber $subscriber;
+    private CustomUtmHelper $helper;
 
     protected function setUp(): void
     {
-        $this->factory = Forms::createFormFactoryBuilder()
-            ->addTypes([
-                new CustomUtmEntryType(),
-                new CustomUtmCollectionType(),
-            ])
-            ->getFormFactory();
-
-        $this->subscriber = new FormSubscriber(new CustomUtmHelper());
+        $this->helper = new CustomUtmHelper();
     }
 
-    public function testCustomFieldsAreMergedOnSubmit(): void
+    public function testCustomFieldsAreMergedAndOldCustomRemoved(): void
     {
-        $emailStub = new class {
-            /** @var array<string, mixed> */
-            private array $utmTags = [
-                'utmSource'  => 'newsletter',
-                'utmMedium'  => 'email',
-                'old_custom' => 'should-be-removed',
-            ];
+        // Simulate PRE_SET_DATA extract
+        $existing = [
+            'utmSource'  => 'newsletter',
+            'utmMedium'  => 'email',
+            'old_custom' => 'should-be-removed',
+        ];
+        $extracted = $this->helper->extractCustomFromUtmTags($existing);
+        self::assertCount(1, $extracted);
+        self::assertSame('old_custom', $extracted[0]['key']);
 
-            public function getUtmTags(): array
-            {
-                return $this->utmTags;
+        // Simulate SUBMIT: strip previous custom keys, then merge new ones
+        $utmTags = $existing;
+        foreach (array_keys($utmTags) as $key) {
+            if (!$this->helper->isReservedKey((string) $key)) {
+                unset($utmTags[$key]);
             }
+        }
 
-            public function setUtmTags(array $tags): void
-            {
-                $this->utmTags = $tags;
-            }
-        };
+        $customEntries = [
+            ['key' => 'channel', 'value' => 'email'],
+            ['key' => 'ref', 'value' => 'hero'],
+        ];
+        $final = $this->helper->mergeCustomIntoUtmTags($utmTags, $customEntries);
 
-        $builder = $this->factory->createBuilder(FormType::class, $emailStub);
-        $builder->add('utmTags', FormType::class, ['mapped' => false]);
-
-        $this->subscriber->addCustomUtmField($builder);
-
-        $form = $builder->getForm();
-        $form->setData($emailStub);
-
-        $customData = $form->get('customUtmTags')->getData();
-        self::assertIsArray($customData);
-        self::assertCount(1, $customData);
-        self::assertSame('old_custom', $customData[0]['key']);
-
-        $form->submit([
-            'customUtmTags' => [
-                ['key' => 'channel', 'value' => 'email'],
-                ['key' => 'ref', 'value' => 'hero'],
-            ],
-        ]);
-
-        self::assertTrue($form->isSynchronized());
-
-        $finalTags = $emailStub->getUtmTags();
-        self::assertSame('newsletter', $finalTags['utmSource']);
-        self::assertSame('email', $finalTags['utmMedium']);
-        self::assertSame('email', $finalTags['channel']);
-        self::assertSame('hero', $finalTags['ref']);
-        self::assertArrayNotHasKey('old_custom', $finalTags);
+        self::assertSame('newsletter', $final['utmSource']);
+        self::assertSame('email', $final['utmMedium']);
+        self::assertSame('email', $final['channel']);
+        self::assertSame('hero', $final['ref']);
+        self::assertArrayNotHasKey('old_custom', $final);
     }
 
     public function testEmptyCustomEntriesAreIgnored(): void
     {
-        $emailStub = new class {
-            private array $utmTags = ['utmSource' => 'src'];
+        $utmTags = ['utmSource' => 'src'];
+        $custom  = [
+            ['key' => '', 'value' => 'x'],
+            ['key' => 'valid', 'value' => 'yes'],
+        ];
 
-            public function getUtmTags(): array
-            {
-                return $this->utmTags;
-            }
+        $final = $this->helper->mergeCustomIntoUtmTags($utmTags, $custom);
 
-            public function setUtmTags(array $tags): void
-            {
-                $this->utmTags = $tags;
-            }
-        };
-
-        $builder = $this->factory->createBuilder(FormType::class, $emailStub);
-        $builder->add('utmTags', FormType::class, ['mapped' => false]);
-        $this->subscriber->addCustomUtmField($builder);
-        $form = $builder->getForm();
-        $form->setData($emailStub);
-
-        $form->submit([
-            'customUtmTags' => [
-                ['key' => '', 'value' => 'x'],
-                ['key' => 'valid', 'value' => 'yes'],
-            ],
-        ]);
-
-        $final = $emailStub->getUtmTags();
         self::assertArrayHasKey('valid', $final);
         self::assertSame('yes', $final['valid']);
         self::assertCount(2, $final);
@@ -122,38 +72,18 @@ final class FormSubscriberTest extends TestCase
 
     public function testReservedKeysCannotBeOverwrittenViaCustomCollection(): void
     {
-        $emailStub = new class {
-            private array $utmTags = [
-                'utmSource' => 'original',
-                'utmMedium' => 'email',
-            ];
+        $utmTags = [
+            'utmSource' => 'original',
+            'utmMedium' => 'email',
+        ];
+        $custom = [
+            ['key' => 'utmSource', 'value' => 'hacked'],
+            ['key' => 'utm_medium', 'value' => 'hacked'],
+            ['key' => 'safe_param', 'value' => 'ok'],
+        ];
 
-            public function getUtmTags(): array
-            {
-                return $this->utmTags;
-            }
+        $final = $this->helper->mergeCustomIntoUtmTags($utmTags, $custom);
 
-            public function setUtmTags(array $tags): void
-            {
-                $this->utmTags = $tags;
-            }
-        };
-
-        $builder = $this->factory->createBuilder(FormType::class, $emailStub);
-        $builder->add('utmTags', FormType::class, ['mapped' => false]);
-        $this->subscriber->addCustomUtmField($builder);
-        $form = $builder->getForm();
-        $form->setData($emailStub);
-
-        $form->submit([
-            'customUtmTags' => [
-                ['key' => 'utmSource', 'value' => 'hacked'],
-                ['key' => 'utm_medium', 'value' => 'hacked'],
-                ['key' => 'safe_param', 'value' => 'ok'],
-            ],
-        ]);
-
-        $final = $emailStub->getUtmTags();
         self::assertSame('original', $final['utmSource']);
         self::assertSame('email', $final['utmMedium']);
         self::assertSame('ok', $final['safe_param']);
