@@ -1,0 +1,49 @@
+{
+    "name": "wieslawgolec/plugin-custom-utm",
+    "description": "Mautic 7.2+ plugin: define custom UTM / query parameters per email. Appended to trackable links like built-in utm_source/medium/campaign/content.",
+    "type": "mautic-plugin",
+    "license": "GPL-3.0-or-later",
+    "authors": [
+        {
+            "name": "Wieslaw Golec",
+            "homepage": "https://github.com/wieslawgolec"
+        }
+    ],
+    "keywords": [
+        "mautic",
+        "mautic-plugin",
+        "mautic-7",
+        "utm",
+        "tracking",
+        "email-marketing"
+    ],
+    "require": {
+        "php": ">=8.2"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.5",
+        "symfony/form": "^6.4 || ^7.0",
+        "symfony/validator": "^6.4 || ^7.0",
+        "symfony/options-resolver": "^6.4 || ^7.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "MauticPlugin\\MauticCustomUtmBundle\\": ""
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "MauticPlugin\\MauticCustomUtmBundle\\Tests\\": "Tests/"
+        }
+    },
+    "extra": {
+        "install-directory-name": "MauticCustomUtmBundle"
+    },
+    "config": {
+        "allow-plugins": {
+            "*": false
+        },
+        "sort-packages": true
+    },
+    "minimum-stability": "stable"
+}
